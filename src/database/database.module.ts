@@ -55,5 +55,6 @@ import { Connection, ConnectionStates } from 'mongoose';
       },
     }),
   ],
+  exports: [MongooseModule],
 })
 export class DatabaseModule {}

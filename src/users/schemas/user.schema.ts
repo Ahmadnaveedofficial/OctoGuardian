@@ -76,6 +76,12 @@ export class User {
 
   @Prop({ default: null, select: false, type: Date })
   resetPasswordExpiry?: Date | null;
+
+  @Prop({ type: Number, default: null })
+  githubInstallationId?: number;
+
+  @Prop({ type: String, default: null })
+  githubUsername?: string;
 }
 
 export const UserSchema = SchemaFactory.createForClass(User);

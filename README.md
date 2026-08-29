@@ -1,8 +1,8 @@
-<p align="center">
-  <img src="docs/images/logo.png" alt="OctoGuardian Logo" width="180" />
-</p>
+# 🛡️ OctoGuardian: Enterprise Autonomous MCP GitHub Operations Engine
 
-#  OctoGuardian: Enterprise Autonomous MCP GitHub Operations Engine
+<p align="left">
+  <img src="docs/images/logo.png" alt="OctoGuardian Logo" width="80" />
+</p>
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Node](https://img.shields.io/badge/node-%3E%3D20.x-green.svg)
@@ -465,10 +465,10 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ---
 
-## 👤 Creator
+## 👤 Maintainer
 
 **Muhammad Ahmad Naveed**
 
 * GitHub: [@Ahmadnaveedofficial](https://github.com/Ahmadnaveedofficial)
-* LinkedIn: [Ahmad Naveed](https://www.linkedin.com/in/ahmad-naveed-7b539521a/)
-* Portfolio: [Ahmad Naveed](https://ahmadnaveed.vercel.app/)
+* LinkedIn: ADD_LINKEDIN_URL
+* Portfolio: ADD_PORTFOLIO_URL

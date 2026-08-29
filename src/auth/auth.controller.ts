@@ -4,9 +4,14 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Req,
+  Res,
   UseGuards,
+  Headers,
+  Ip,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import {
   RegisterDto,
@@ -22,6 +27,7 @@ import {
 import { ChangePasswordDto } from '../users/dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
+import { setAuthCookies, clearAuthCookies } from '../common/utils/cookie.util';
 import type { UserDocument } from '../users/schemas/user.schema';
 
 @ApiTags('Auth Endpoints')
@@ -38,30 +44,112 @@ export class AuthController {
 
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Verify OTP and issue access & refresh tokens' })
-  verifyOtp(@Body() dto: VerifyDto) {
-    return this.authService.verifyOtp(dto);
-  }
-
-  @Post('resend-otp')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Resend OTP to user email' })
-  resendOtp(@Body() dto: ResendOptDto) {
-    return this.authService.resendOtp(dto);
+  @ApiOperation({ summary: 'Verify OTP and issue cookies' })
+  async verifyOtp(
+    @Body() dto: VerifyDto,
+    @Headers('user-agent') userAgent = 'Unknown Device',
+    @Ip() ipAddress: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.verifyOtp(dto, userAgent, ipAddress);
+    setAuthCookies(res, result.tokens.accessToken, result.tokens.refreshToken);
+    return result;
   }
 
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login user and generate session tokens' })
-  login(@Body() dto: LoginDto) {
-    return this.authService.login(dto);
+  @ApiOperation({ summary: 'Login user and set HttpOnly cookies' })
+  async login(
+    @Body() dto: LoginDto,
+    @Headers('user-agent') userAgent = 'Unknown Device',
+    @Ip() ipAddress: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.authService.login(dto, userAgent, ipAddress);
+    setAuthCookies(res, result.tokens.accessToken, result.tokens.refreshToken);
+    return result;
   }
 
   @Post('refresh-token')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Rotate and refresh access token' })
-  refreshTokens(@Body() dto: RefreshTokenDto) {
-    return this.authService.refreshTokens(dto.refreshToken);
+  @ApiOperation({ summary: 'Rotate and refresh tokens via Cookie or Body' })
+  async refreshTokens(
+    @Req() req: Request,
+    @Body() dto: RefreshTokenDto,
+    @Headers('user-agent') userAgent = 'Unknown Device',
+    @Ip() ipAddress: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const cookies = req.cookies as
+      Record<string, string | undefined> | undefined;
+    const rawToken: string = cookies?.['refresh_token'] ?? dto.refreshToken;
+
+    const tokens = await this.authService.refreshTokens(
+      rawToken,
+      userAgent,
+      ipAddress,
+    );
+    setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
+    return tokens;
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({
+    summary: 'Logout device, clear cookies, and blacklist access token',
+  })
+  async logout(
+    @Req() req: Request,
+    @CurrentUser() user: UserDocument,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const cookies = req.cookies as
+      Record<string, string | undefined> | undefined;
+    const body = req.body as Record<string, string | undefined> | undefined;
+    const rawRefreshToken: string | undefined =
+      cookies?.['refresh_token'] ?? body?.['refreshToken'];
+
+    const accessPayload = (
+      req as unknown as {
+        userPayload?: {
+          jti?: string;
+          exp?: number;
+          sub: string;
+          email: string;
+        };
+      }
+    ).userPayload;
+
+    await this.authService.logout(
+      user._id.toString(),
+      rawRefreshToken,
+      accessPayload,
+    );
+    clearAuthCookies(res);
+    return { message: 'Logged out successfully' };
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @Post('logout-all')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Logout from all devices' })
+  async logoutAll(
+    @CurrentUser() user: UserDocument,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    await this.authService.logoutAllDevices(user._id.toString());
+    clearAuthCookies(res);
+    return { message: 'Logged out from all devices successfully' };
+  }
+
+  @Post('resend-otp')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Resend OTP' })
+  resendOtp(@Body() dto: ResendOptDto) {
+    return this.authService.resendOtp(dto);
   }
 
   @Post('forgot-password')
@@ -80,7 +168,7 @@ export class AuthController {
 
   @Post('request-reactivation')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Request OTP to reactivate deactivated account' })
+  @ApiOperation({ summary: 'Request account reactivation OTP' })
   requestReactivation(@Body() dto: RequestReactivationDto) {
     return this.authService.requestReactivation(dto);
   }
@@ -90,16 +178,6 @@ export class AuthController {
   @ApiOperation({ summary: 'Verify OTP and reactivate account' })
   reactivateAccount(@Body() dto: ReactivateAccountDto) {
     return this.authService.reactivateAccount(dto);
-  }
-
-  @UseGuards(JwtAuthGuard)
-  @ApiBearerAuth('JWT-auth')
-  @Post('logout')
-  @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Logout user and invalidate session' })
-  async logout(@CurrentUser() user: UserDocument) {
-    await this.authService.logout(user._id.toString());
-    return { message: 'Logged out successfully' };
   }
 
   @UseGuards(JwtAuthGuard)

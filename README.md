@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/images/logo.png" alt="OctoGuardian Logo" width="140" />
+</p>
+
 # 🛡️ OctoGuardian: Enterprise Autonomous MCP GitHub Operations Engine
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)

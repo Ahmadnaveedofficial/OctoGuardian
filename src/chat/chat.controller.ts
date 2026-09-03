@@ -1,24 +1,25 @@
-import { Body, Controller, Delete, Get, Post, Req } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Post, UseGuards } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { ChatService } from './chat.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
+import type { UserDocument } from '../users/schemas/user.schema';
 
+@ApiTags('Chat')
+@UseGuards(JwtAuthGuard)
+@ApiBearerAuth('JWT-auth')
 @Controller('chat')
 export class ChatController {
   constructor(private readonly chatService: ChatService) {}
 
-  private getUserId(req: any): string {
-    return String(req.user?.userId || req.user?.id || 'default-user');
-  }
-
   @Get('history')
-  async getHistory(@Req() req: any) {
-    const userId = this.getUserId(req);
-
-    return this.chatService.getHistory(userId);
+  async getHistory(@CurrentUser() user: UserDocument) {
+    return this.chatService.getHistory(user._id.toString());
   }
 
   @Post('message')
   async saveMessage(
-    @Req() req: any,
+    @CurrentUser() user: UserDocument,
     @Body()
     body: {
       role: 'user' | 'assistant';
@@ -27,10 +28,8 @@ export class ChatController {
       rawData?: unknown;
     },
   ) {
-    const userId = this.getUserId(req);
-
     return this.chatService.saveMessage({
-      userId,
+      userId: user._id.toString(),
       role: body.role,
       content: body.content,
       executedTool: body.executedTool,
@@ -39,10 +38,8 @@ export class ChatController {
   }
 
   @Delete('history')
-  async clearHistory(@Req() req: any) {
-    const userId = this.getUserId(req);
-
-    await this.chatService.clearHistory(userId);
+  async clearHistory(@CurrentUser() user: UserDocument) {
+    await this.chatService.clearHistory(user._id.toString());
 
     return {
       success: true,

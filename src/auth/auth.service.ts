@@ -350,4 +350,32 @@ export class AuthService {
 
     return { message: 'Account reactivated successfully' };
   }
+
+  async getUserSessions(userId: string) {
+    const sessions = await this.sessionModel.find({
+      userId: new Types.ObjectId(userId),
+    });
+    return {
+      sessions: sessions.map((s) => ({
+        _id: s._id.toString(),
+        userAgent: s.userAgent,
+        ipAddress: s.ipAddress,
+        expiresAt: s.expiresAt,
+      })),
+    };
+  }
+
+  async revokeSession(userId: string, sessionId: string) {
+    const session = await this.sessionModel.findOne({
+      _id: new Types.ObjectId(sessionId),
+      userId: new Types.ObjectId(userId),
+    });
+
+    if (!session) {
+      throw new NotFoundException('Session not found');
+    }
+
+    await this.sessionModel.findByIdAndDelete(sessionId);
+    return { message: 'Session revoked successfully' };
+  }
 }

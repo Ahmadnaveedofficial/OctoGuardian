@@ -11,6 +11,7 @@ import { GitHubModule } from './github/github.module';
 import { AuditModule } from './audit/audit.module';
 import { McpModule } from './mcp/mcp.module';
 import { GeminiModule } from './gemini/gemini.module';
+import { ChatModule } from './chat/chat.module';
 import authConfig from './config/auth.config';
 import { envValidationSchema } from './config/env.validation';
 
@@ -34,6 +35,7 @@ import { envValidationSchema } from './config/env.validation';
     AuditModule,
     McpModule,
     GeminiModule,
+    ChatModule,
   ],
   controllers: [AppController],
   providers: [AppService],

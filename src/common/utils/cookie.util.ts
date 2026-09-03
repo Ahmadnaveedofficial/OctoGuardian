@@ -1,30 +1,34 @@
 import { Response } from 'express';
 
-export const setAuthCookies = (
-  res: Response,
-  accessToken: string,
-  refreshToken: string,
-) => {
-  // Access Token Cookie 15 mins
-  res.cookie('access_token', accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 15 * 60 * 1000,
-  });
+const ACCESS_TOKEN_MAX_AGE = 15 * 60 * 1000;
+const REFRESH_TOKEN_MAX_AGE = 7 * 24 * 60 * 60 * 1000;
 
-  // Refresh Token Cookie 7 days
-  res.cookie('refresh_token', refreshToken, {
+function cookieOptions() {
+  const isProduction = process.env.NODE_ENV === 'production';
+  const sameSite = process.env.COOKIE_SAME_SITE?.toLowerCase() === 'none' ? 'none' : 'lax';
+  return {
     httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/api/v1/auth', // Sirf auth endpoints par attach hoga
-    maxAge: 7 * 24 * 60 * 60 * 1000,
+    secure: isProduction || sameSite === 'none',
+    sameSite: sameSite as 'lax' | 'none',
+  };
+}
+
+export const setAuthCookies = (res: Response, accessToken: string, refreshToken: string) => {
+  const common = cookieOptions();
+  res.cookie('access_token', accessToken, {
+    ...common,
+    path: '/',
+    maxAge: ACCESS_TOKEN_MAX_AGE,
+  });
+  res.cookie('refresh_token', refreshToken, {
+    ...common,
+    path: '/api/v1/auth',
+    maxAge: REFRESH_TOKEN_MAX_AGE,
   });
 };
 
 export const clearAuthCookies = (res: Response) => {
-  res.clearCookie('access_token', { path: '/' });
-  res.clearCookie('refresh_token', { path: '/api/v1/auth' });
+  const common = cookieOptions();
+  res.clearCookie('access_token', { ...common, path: '/' });
+  res.clearCookie('refresh_token', { ...common, path: '/api/v1/auth' });
 };

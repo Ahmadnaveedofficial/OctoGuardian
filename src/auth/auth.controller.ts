@@ -4,11 +4,15 @@ import {
   HttpCode,
   HttpStatus,
   Post,
+  Get,
   Req,
   Res,
   UseGuards,
   Headers,
+  Delete,
+  Param,
   Ip,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import type { Request, Response } from 'express';
@@ -22,7 +26,7 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   RequestReactivationDto,
-  ReactivateAccountDto,
+  ReactivateAccountDto
 } from './dto';
 import { ChangePasswordDto } from '../users/dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -53,7 +57,7 @@ export class AuthController {
   ) {
     const result = await this.authService.verifyOtp(dto, userAgent, ipAddress);
     setAuthCookies(res, result.tokens.accessToken, result.tokens.refreshToken);
-    return result;
+    return { message: result.message, user: result.user };
   }
 
   @Post('login')
@@ -67,7 +71,7 @@ export class AuthController {
   ) {
     const result = await this.authService.login(dto, userAgent, ipAddress);
     setAuthCookies(res, result.tokens.accessToken, result.tokens.refreshToken);
-    return result;
+    return { user: result.user };
   }
 
   @Post('refresh-token')
@@ -82,7 +86,11 @@ export class AuthController {
   ) {
     const cookies = req.cookies as
       Record<string, string | undefined> | undefined;
-    const rawToken: string = cookies?.['refresh_token'] ?? dto.refreshToken;
+    const rawToken = cookies?.['refresh_token'] ?? dto.refreshToken;
+
+    if (!rawToken) {
+      throw new UnauthorizedException('Refresh token cookie is missing');
+    }
 
     const tokens = await this.authService.refreshTokens(
       rawToken,
@@ -90,7 +98,7 @@ export class AuthController {
       ipAddress,
     );
     setAuthCookies(res, tokens.accessToken, tokens.refreshToken);
-    return tokens;
+    return { message: 'Tokens refreshed successfully' };
   }
 
   @UseGuards(JwtAuthGuard)
@@ -190,5 +198,26 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ) {
     return this.authService.changePassword(user._id.toString(), dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @Get('sessions')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get all active device sessions for current user' })
+  async getSessions(@CurrentUser() user: UserDocument) {
+    return this.authService.getUserSessions(user._id.toString());
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @Delete('sessions/:id')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Revoke a specific device session by ID' })
+  async revokeSession(
+    @CurrentUser() user: UserDocument,
+    @Param('id') sessionId: string,
+  ) {
+    return this.authService.revokeSession(user._id.toString(), sessionId);
   }
 }

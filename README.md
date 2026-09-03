@@ -20,11 +20,12 @@
 3. [Component Hierarchy & Execution Lifecycle](#-component-hierarchy--execution-lifecycle)
 4. [Human-in-the-Loop (HITL) Security Model](#-human-in-the-loop-hitl-security-model)
 5. [Model Context Protocol (MCP) Tool Inventory](#-model-context-protocol-mcp-tool-inventory)
-6. [Audit Logging & Observability Engine](#-audit-logging--observability-engine)
-7. [Setup & Deployment Guide](#-setup--deployment-guide)
-8. [Comprehensive API Reference](#-comprehensive-api-reference)
-9. [Troubleshooting & Diagnostics](#-troubleshooting--diagnostics)
-10. [Maintainer](#-maintainer)
+6. [Chat & Conversation Memory](#-chat--conversation-memory)
+7. [Audit Logging & Observability Engine](#-audit-logging--observability-engine)
+8. [Setup & Deployment Guide](#-setup--deployment-guide)
+9. [Comprehensive API Reference](#-comprehensive-api-reference)
+10. [Troubleshooting & Diagnostics](#-troubleshooting--diagnostics)
+11. [Creator](#-creator)
 
 ---
 
@@ -107,7 +108,7 @@ OctoGuardian implements a protocol layer that guarantees:
 The client submits a free-text prompt via the REST API. The payload is validated via class-validator pipes and passed to the Orchestrator service.
 
 ### 2. LLM Function Calling Resolution
-The orchestrator initializes Google Gemini with an MCP-compliant tool catalog. Gemini returns a structured `FunctionCall` containing the targeted tool and its resolved parameters.
+The orchestrator initializes Google Gemini (`gemini-3.1-flash-lite`, via the `@google/genai` SDK) with an MCP-compliant tool catalog. The model runs inside a bounded agentic loop (maximum 5 turns): each turn, Gemini may return a structured `FunctionCall`, which is executed and fed back into the conversation as a function response, until the model produces a final natural-language answer or the turn budget is exhausted. The system instruction explicitly forbids the model from inventing repository owners/organizations and forbids it from auto-confirming a dangerous action on the user's behalf.
 
 ### 3. Dynamic Installation Context Resolver
 The system matches the authenticated user against GitHub App installation mappings. It retrieves the repository metadata to confirm write access and ensure execution is routed to the authorized repository owner.
@@ -197,6 +198,17 @@ Token Validation & Expiry Check
 
 ---
 
+## 💬 Chat & Conversation Memory
+
+Every prompt and response exchanged with the MCP orchestrator is persisted independently of the audit log, so a user's conversation survives page reloads and can be replayed as a chat thread.
+
+* **Storage**: A dedicated `ChatMessage` MongoDB collection stores `userId`, `role` (`user` | `assistant`), `content`, and optionally the `executedTool` name and its `rawData` result, timestamped via Mongoose's automatic `createdAt`/`updatedAt` fields.
+* **Scope**: History reads and deletes are always scoped to the authenticated user; there is no cross-user visibility into chat content.
+* **Separation of concerns**: Chat history is a UI/UX convenience (what did we say to each other), while the audit log is the compliance/security record (what did the system actually do). The two are stored separately and neither substitutes for the other.
+* **Lifecycle**: The frontend calls `GET /api/v1/chat/history` on load, `POST /api/v1/chat/message` after each turn (both the user's prompt and the assistant's reply), and `DELETE /api/v1/chat/history` when the user clears the conversation.
+
+---
+
 ## 📊 Audit Logging & Observability Engine
 
 Every operation executed across the engine is persisted in an audit log collection:
@@ -241,16 +253,35 @@ Every operation executed across the engine is persisted in an audit log collecti
 
 ### 1. Environment Configuration
 
-Copy `.env.example` to `.env` and configure credentials:
+Copy `.env.example` to `.env` and configure credentials. Every variable below is validated at boot time by a Joi schema (`src/config/env.validation.ts`); the process refuses to start if a required variable is missing.
 
 ```env
 # Server
-PORT=3000
+PORT=4000
 NODE_ENV=development
-API_PREFIX=api/v1
+FRONTEND_URL=http://localhost:3000
+# Set to "none" only when the frontend and backend are on different domains in production
+COOKIE_SAME_SITE=lax
 
 # Database
 MONGODB_URI=mongodb://localhost:27017/octoguardian
+
+# JWT
+JWT_ACCESS_SECRET=your-super-secret-access-key
+JWT_ACCESS_EXPIRES_IN=15m
+JWT_REFRESH_SECRET=your-super-secret-refresh-key
+JWT_REFRESH_EXPIRES_IN=7d
+
+# SMTP (OTP + account lifecycle emails)
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_USER=your_email@gmail.com
+SMTP_PASS=your_app_password
+
+# Cloudinary (avatar uploads)
+CLOUDINARY_CLOUD_NAME=your_cloud_name
+CLOUDINARY_API_KEY=your_api_key
+CLOUDINARY_API_SECRET=your_api_secret
 
 # Google AI
 GEMINI_API_KEY=AIzaSy...
@@ -263,6 +294,8 @@ GITHUB_APP_CLIENT_SECRET=570b43dc...
 GITHUB_APP_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0...\n-----END RSA PRIVATE KEY-----"
 ```
 
+> **Note:** the API prefix (`api/v1`) and Swagger path (`api/docs`) are hardcoded in `src/main.ts`, not environment-driven. `PORT` is read directly from `process.env` in `main.ts` and falls back to `4000` if unset.
+
 ### 2. Installation & Bootstrap
 
 ```bash
@@ -273,10 +306,7 @@ cd OctoGuardian
 # Install dependencies
 npm install
 
-# Run database migrations (if applicable)
-npm run db:migrate
-
-# Start development server
+# Start development server (MongoDB uses Mongoose schemas directly; no migration step is required)
 npm run start:dev
 ```
 
@@ -436,6 +466,40 @@ npm run start:prod
 
 ---
 
+### 5. Chat History Endpoints
+
+* **`GET /api/v1/chat/history`** — Returns the authenticated user's saved messages in chronological order.
+* **`POST /api/v1/chat/message`** — Persists a single message (`role`, `content`, optional `executedTool`/`rawData`). The frontend calls this once for the user's prompt and once for the assistant's reply.
+* **`DELETE /api/v1/chat/history`** — Permanently deletes all saved messages for the authenticated user.
+
+#### Example Response — `GET /api/v1/chat/history`
+
+```json
+{
+  "success": true,
+  "statusCode": 200,
+  "data": [
+    {
+      "_id": "6a9339325e7656067732d28a",
+      "userId": "6a9320c9730411e54db1efd4",
+      "role": "user",
+      "content": "List my repositories",
+      "createdAt": "2026-08-29T19:55:12.001Z"
+    },
+    {
+      "_id": "6a9339325e7656067732d28b",
+      "userId": "6a9320c9730411e54db1efd4",
+      "role": "assistant",
+      "content": "You have 4 repositories accessible via the current installation.",
+      "executedTool": "list_repositories",
+      "createdAt": "2026-08-29T19:55:13.442Z"
+    }
+  ]
+}
+```
+
+---
+
 ## 🔧 Troubleshooting & Diagnostics
 
 ### 1. `HttpError: Resource not accessible by integration`
@@ -465,10 +529,10 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ---
 
-## 👤 Maintainer
+## 👤 Creator
 
 **Muhammad Ahmad Naveed**
 
 * GitHub: [@Ahmadnaveedofficial](https://github.com/Ahmadnaveedofficial)
-* LinkedIn: ADD_LINKEDIN_URL
-* Portfolio: ADD_PORTFOLIO_URL
+* LinkedIn: [Ahmad Naveed](https://www.linkedin.com/in/ahmad-naveed-7b539521a/)
+* Portfolio: [ahmadnaveed.vercel.app](https://ahmadnaveed.vercel.app/)

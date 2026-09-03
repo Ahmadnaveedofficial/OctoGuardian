@@ -1,3 +1,4 @@
+// src/github/github.service.ts
 import {
   Injectable,
   Logger,
@@ -290,25 +291,41 @@ export class GitHubService {
     installationId?: number,
   ) {
     const octokit = this.getOctokit(installationId);
-    const { data: refData } = await octokit.rest.git.getRef({
-      owner,
-      repo,
-      ref: `heads/${fromBranch}`,
-    });
+    try {
+      const { data: refData } = await octokit.rest.git.getRef({
+        owner,
+        repo,
+        ref: `heads/${fromBranch}`,
+      });
 
-    const sha = refData.object.sha;
-    const { data: newBranch } = await octokit.rest.git.createRef({
-      owner,
-      repo,
-      ref: `refs/heads/${branchName}`,
-      sha,
-    });
+      const sha = refData.object.sha;
+      const { data: newBranch } = await octokit.rest.git.createRef({
+        owner,
+        repo,
+        ref: `refs/heads/${branchName}`,
+        sha,
+      });
 
-    return {
-      branch: branchName,
-      ref: newBranch.ref,
-      sha: newBranch.object.sha,
-    };
+      return {
+        branch: branchName,
+        ref: newBranch.ref,
+        sha: newBranch.object.sha,
+      };
+    } catch (error: any) {
+      if (error.status === 409 || error.message?.includes('empty')) {
+        await this.createOrUpdateFile(
+          owner,
+          repo,
+          'README.md',
+          `# ${repo}\n\nInitialized automatically via OctoGuardian AI Engine.`,
+          'Initial commit',
+          fromBranch,
+          installationId,
+        );
+        return this.createBranch(owner, repo, branchName, fromBranch, installationId);
+      }
+      throw error;
+    }
   }
 
   async deleteBranch(
@@ -585,5 +602,66 @@ export class GitHubService {
       state: data.state,
       closedAt: data.closed_at,
     };
+  }
+
+  // --- ENTERPRISE OPERATIONS ADDED ---
+  async listCommits(owner: string, repo: string, branch = 'main', installationId?: number) {
+    const octokit = this.getOctokit(installationId);
+    const { data } = await octokit.rest.repos.listCommits({ owner, repo, sha: branch, per_page: 20 });
+    return data.map((c) => ({ sha: c.sha, message: c.commit.message, author: c.commit.author?.name }));
+  }
+
+  async createRelease(owner: string, repo: string, tagName: string, name: string, body?: string, installationId?: number) {
+    const octokit = this.getOctokit(installationId);
+    const { data } = await octokit.rest.repos.createRelease({ owner, repo, tag_name: tagName, name, body });
+    return { id: data.id, tagName: data.tag_name, name: data.name, htmlUrl: data.html_url };
+  }
+
+  async listReleases(owner: string, repo: string, installationId?: number) {
+    const octokit = this.getOctokit(installationId);
+    const { data } = await octokit.rest.repos.listReleases({ owner, repo, per_page: 20 });
+    return data.map((r) => ({ id: r.id, tagName: r.tag_name, name: r.name, htmlUrl: r.html_url }));
+  }
+
+  async listLabels(owner: string, repo: string, installationId?: number) {
+    const octokit = this.getOctokit(installationId);
+    const { data } = await octokit.rest.issues.listLabelsForRepo({ owner, repo });
+    return data.map((l) => ({ name: l.name, color: l.color }));
+  }
+
+  async createLabel(owner: string, repo: string, name: string, color: string, description?: string, installationId?: number) {
+    const octokit = this.getOctokit(installationId);
+    const { data } = await octokit.rest.issues.createLabel({ owner, repo, name, color, description });
+    return { name: data.name, color: data.color };
+  }
+
+  async listMilestones(owner: string, repo: string, installationId?: number) {
+    const octokit = this.getOctokit(installationId);
+    const { data } = await octokit.rest.issues.listMilestones({ owner, repo });
+    return data.map((m) => ({ number: m.number, title: m.title, state: m.state }));
+  }
+
+  async createMilestone(owner: string, repo: string, title: string, description?: string, installationId?: number) {
+    const octokit = this.getOctokit(installationId);
+    const { data } = await octokit.rest.issues.createMilestone({ owner, repo, title, description });
+    return { number: data.number, title: data.title };
+  }
+
+  async addCollaborator(owner: string, repo: string, username: string, permission: 'pull' | 'push' | 'admin' = 'push', installationId?: number) {
+    const octokit = this.getOctokit(installationId);
+    const { data } = await octokit.rest.repos.addCollaborator({ owner, repo, username, permission });
+    return { added: true, username, permission, profileUrl: data.html_url };
+  }
+
+  async listCollaborators(owner: string, repo: string, installationId?: number) {
+    const octokit = this.getOctokit(installationId);
+    const { data } = await octokit.rest.repos.listCollaborators({ owner, repo });
+    return data.map((c) => ({ username: c.login }));
+  }
+
+  async searchCode(query: string, installationId?: number) {
+    const octokit = this.getOctokit(installationId);
+    const { data } = await octokit.rest.search.code({ q: query, per_page: 10 });
+    return data.items.map((item) => ({ name: item.name, path: item.path, repository: item.repository.full_name }));
   }
 }

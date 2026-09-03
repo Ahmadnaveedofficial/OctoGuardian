@@ -41,7 +41,7 @@ export class GitHubController {
       userPayload.sub;
 
     const appName =
-      this.configService.get<string>('GITHUB_APP_NAME') || 'mcp-github-ops';
+      this.configService.get<string>('GITHUB_APP_NAME') || 'octoguardian';
     const installUrl = `https://github.com/apps/${appName}/installations/new?state=${String(userId)}`;
 
     return {
@@ -64,7 +64,7 @@ export class GitHubController {
     @Res() res: Response,
   ) {
     const frontendUrl =
-      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:5173';
+      this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
 
     if (!installationId || !stateUserId) {
       return res.redirect(

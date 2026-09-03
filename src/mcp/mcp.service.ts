@@ -298,6 +298,143 @@ export class McpService {
           required: ['owner', 'repo', 'issueNumber'],
         },
       },
+      // --- Enterprise Tools Added ---
+      {
+        name: 'list_commits',
+        description: 'List recent commits in a repository branch.',
+        parameters: {
+          type: 'object',
+          properties: {
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            branch: { type: 'string', description: 'Branch name' },
+          },
+          required: ['owner', 'repo'],
+        },
+      },
+      {
+        name: 'create_release',
+        description: 'Create a new GitHub release and tag.',
+        parameters: {
+          type: 'object',
+          properties: {
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            tagName: { type: 'string', description: 'Tag name e.g. v1.0.0' },
+            name: { type: 'string', description: 'Release title' },
+            body: { type: 'string', description: 'Release description' },
+          },
+          required: ['owner', 'repo', 'tagName', 'name'],
+        },
+      },
+      {
+        name: 'list_releases',
+        description: 'List all repository releases.',
+        parameters: {
+          type: 'object',
+          properties: {
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+          },
+          required: ['owner', 'repo'],
+        },
+      },
+      {
+        name: 'list_labels',
+        description: 'List all labels in a repository.',
+        parameters: {
+          type: 'object',
+          properties: {
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+          },
+          required: ['owner', 'repo'],
+        },
+      },
+      {
+        name: 'create_label',
+        description: 'Create a new repository label.',
+        parameters: {
+          type: 'object',
+          properties: {
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            name: { type: 'string', description: 'Label name' },
+            color: {
+              type: 'string',
+              description: 'Hex color code e.g. ff0000',
+            },
+            description: { type: 'string', description: 'Label description' },
+          },
+          required: ['owner', 'repo', 'name', 'color'],
+        },
+      },
+      {
+        name: 'list_milestones',
+        description: 'List repository milestones.',
+        parameters: {
+          type: 'object',
+          properties: {
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+          },
+          required: ['owner', 'repo'],
+        },
+      },
+      {
+        name: 'create_milestone',
+        description: 'Create a new repository milestone.',
+        parameters: {
+          type: 'object',
+          properties: {
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            title: { type: 'string', description: 'Milestone title' },
+            description: {
+              type: 'string',
+              description: 'Milestone description',
+            },
+          },
+          required: ['owner', 'repo', 'title'],
+        },
+      },
+      {
+        name: 'add_repository_collaborator',
+        description: 'Add a collaborator to a repository.',
+        parameters: {
+          type: 'object',
+          properties: {
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+            username: { type: 'string', description: 'GitHub username' },
+            permission: { type: 'string', enum: ['pull', 'push', 'admin'] },
+          },
+          required: ['owner', 'repo', 'username'],
+        },
+      },
+      {
+        name: 'list_repository_collaborators',
+        description: 'List repository collaborators.',
+        parameters: {
+          type: 'object',
+          properties: {
+            owner: { type: 'string', description: 'Repository owner' },
+            repo: { type: 'string', description: 'Repository name' },
+          },
+          required: ['owner', 'repo'],
+        },
+      },
+      {
+        name: 'search_code',
+        description: 'Search code across repositories.',
+        parameters: {
+          type: 'object',
+          properties: {
+            query: { type: 'string', description: 'Search query' },
+          },
+          required: ['query'],
+        },
+      },
       {
         name: 'confirm_dangerous_action',
         description:
@@ -324,17 +461,21 @@ export class McpService {
     installationId?: number,
   ): Promise<unknown> {
     const startTime = Date.now();
+
     const targetRepo =
       typeof args['repo'] === 'string' ? args['repo'] : undefined;
 
-    // 1. Handle confirmation execution
+    let result: unknown;
+
     if (toolName === 'confirm_dangerous_action') {
       const token = this.toSafeString(args['confirmationToken']);
+
       const pending = await this.riskEvaluator.verifyAndConsumeToken(
         token,
         userId,
       );
-      return this.runToolLogic(
+
+      result = await this.runToolLogic(
         String(pending.toolName),
         pending.payload as Record<string, unknown>,
         userId,
@@ -342,10 +483,7 @@ export class McpService {
         startTime,
         installationId,
       );
-    }
-
-    // 2. Intercept dangerous operations
-    if (this.riskEvaluator.isDangerous(toolName)) {
+    } else if (this.riskEvaluator.isDangerous(toolName)) {
       const pendingResult = await this.riskEvaluator.createPendingAction(
         userId,
         toolName,
@@ -362,18 +500,19 @@ export class McpService {
         ipAddress,
       });
 
-      return pendingResult;
+      result = pendingResult;
+    } else {
+      result = await this.runToolLogic(
+        toolName,
+        args,
+        userId,
+        ipAddress,
+        startTime,
+        installationId,
+      );
     }
 
-    // 3. Normal Tool Execution
-    return this.runToolLogic(
-      toolName,
-      args,
-      userId,
-      ipAddress,
-      startTime,
-      installationId,
-    );
+    return result;
   }
 
   private async runToolLogic(
@@ -553,6 +692,100 @@ export class McpService {
             owner,
             repo,
             Number(args['issueNumber']),
+            installationId,
+          );
+          break;
+
+        case 'list_commits':
+          result = await this.gitHubService.listCommits(
+            owner,
+            repo,
+            typeof args['branch'] === 'string' ? args['branch'] : 'main',
+            installationId,
+          );
+          break;
+
+        case 'create_release':
+          result = await this.gitHubService.createRelease(
+            owner,
+            repo,
+            this.toSafeString(args['tagName']),
+            this.toSafeString(args['name']),
+            typeof args['body'] === 'string' ? args['body'] : undefined,
+            installationId,
+          );
+          break;
+
+        case 'list_releases':
+          result = await this.gitHubService.listReleases(
+            owner,
+            repo,
+            installationId,
+          );
+          break;
+
+        case 'list_labels':
+          result = await this.gitHubService.listLabels(
+            owner,
+            repo,
+            installationId,
+          );
+          break;
+
+        case 'create_label':
+          result = await this.gitHubService.createLabel(
+            owner,
+            repo,
+            this.toSafeString(args['name']),
+            this.toSafeString(args['color']),
+            typeof args['description'] === 'string'
+              ? args['description']
+              : undefined,
+            installationId,
+          );
+          break;
+
+        case 'list_milestones':
+          result = await this.gitHubService.listMilestones(
+            owner,
+            repo,
+            installationId,
+          );
+          break;
+
+        case 'create_milestone':
+          result = await this.gitHubService.createMilestone(
+            owner,
+            repo,
+            this.toSafeString(args['title']),
+            typeof args['description'] === 'string'
+              ? args['description']
+              : undefined,
+            installationId,
+          );
+          break;
+
+        case 'add_repository_collaborator':
+          result = await this.gitHubService.addCollaborator(
+            owner,
+            repo,
+            this.toSafeString(args['username']),
+            (args['permission'] as 'pull' | 'push' | 'admin') ?? 'push',
+            installationId,
+          );
+          break;
+
+        case 'list_repository_collaborators':
+          result = await this.gitHubService.listCollaborators(
+            owner,
+            repo,
+            installationId,
+          );
+          break;
+
+        case 'search_code':
+          result = await this.gitHubService.searchCode(
+            this.toSafeString(args['query']),
             installationId,
           );
           break;

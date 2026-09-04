@@ -12,6 +12,7 @@ import type { Response, Request } from 'express';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { User, UserDocument } from '../users/schemas/user.schema';
 import { GitHubService } from './github.service';
+import { signGitHubState, verifyGitHubState } from '../common/utils/github-state.util';
 
 @ApiTags('GitHub App Integration')
 @Controller('github')
@@ -27,7 +28,7 @@ export class GitHubController {
   })
   @ApiResponse({
     status: 200,
-    description: 'Returns installation URL with state',
+    description: 'Returns installation URL with a signed, expiring state',
   })
   @ApiBearerAuth('JWT-auth')
   @UseGuards(JwtAuthGuard)
@@ -42,7 +43,9 @@ export class GitHubController {
 
     const appName =
       this.configService.get<string>('GITHUB_APP_NAME') || 'octoguardian';
-    const installUrl = `https://github.com/apps/${appName}/installations/new?state=${String(userId)}`;
+    const stateSecret = this.configService.get<string>('JWT_ACCESS_SECRET')!;
+    const state = signGitHubState(String(userId), stateSecret);
+    const installUrl = `https://github.com/apps/${appName}/installations/new?state=${encodeURIComponent(state)}`;
 
     return {
       success: true,
@@ -60,20 +63,31 @@ export class GitHubController {
   async handleCallback(
     @Query('installation_id') installationId: string,
     @Query('setup_action') setupAction: string,
-    @Query('state') stateUserId: string,
+    @Query('state') state: string,
     @Res() res: Response,
   ) {
     const frontendUrl =
       this.configService.get<string>('FRONTEND_URL') || 'http://localhost:3000';
 
-    if (!installationId || !stateUserId) {
+    if (!installationId || !state) {
       return res.redirect(
         `${frontendUrl}/dashboard?error=missing_installation_parameters`,
       );
     }
 
+    const stateSecret = this.configService.get<string>('JWT_ACCESS_SECRET')!;
+    const { valid, userId } = verifyGitHubState(state, stateSecret);
+
+    if (!valid || !userId) {
+      // The state was forged, replayed, expired, or never issued by this
+      // backend — never trust it to bind an installation to any account.
+      return res.redirect(
+        `${frontendUrl}/dashboard?error=invalid_or_expired_state`,
+      );
+    }
+
     try {
-      await this.userModel.findByIdAndUpdate(stateUserId, {
+      await this.userModel.findByIdAndUpdate(userId, {
         githubInstallationId: Number(installationId),
       });
 

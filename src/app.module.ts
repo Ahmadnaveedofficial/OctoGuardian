@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { DatabaseModule } from './database/database.module';
@@ -26,6 +28,16 @@ import { envValidationSchema } from './config/env.validation';
         abortEarly: false,
       },
     }),
+    // Global rate limiting: a generous default for all routes, with a much
+    // stricter limit applied per-endpoint on auth/OTP routes (see
+    // auth.controller.ts) to stop brute-force and OTP-guessing attacks.
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 100,
+      },
+    ]),
     DatabaseModule,
     UsersModule,
     AuthModule,
@@ -38,6 +50,12 @@ import { envValidationSchema } from './config/env.validation';
     ChatModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}

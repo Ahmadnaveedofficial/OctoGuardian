@@ -10,6 +10,15 @@ export const envValidationSchema = Joi.object({
     .default('development'),
   MONGODB_URI: Joi.string().required(),
 
+  // Frontend / cookies
+  FRONTEND_URL: Joi.string().uri().default('http://localhost:3000'),
+  COOKIE_SAME_SITE: Joi.string()
+    .valid('lax', 'none')
+    .default('lax')
+    .description(
+      'Set to "none" only when the frontend and backend are on different domains in production (forces Secure cookies).',
+    ),
+
   // JWT
   JWT_ACCESS_SECRET: Joi.string().required(),
   JWT_ACCESS_EXPIRES_IN: Joi.string().default('1h'),
@@ -29,6 +38,7 @@ export const envValidationSchema = Joi.object({
 
   // GitHub App Configuration
   GITHUB_APP_ID: Joi.string().required(),
+  GITHUB_APP_NAME: Joi.string().default('octoguardian'),
   GITHUB_APP_CLIENT_ID: Joi.string().optional().allow(''),
   GITHUB_APP_CLIENT_SECRET: Joi.string().optional().allow(''),
   GITHUB_APP_INSTALLATION_ID: Joi.string().optional().allow(''),

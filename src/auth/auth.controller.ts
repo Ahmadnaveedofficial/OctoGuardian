@@ -15,6 +15,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
 import {
@@ -26,7 +27,7 @@ import {
   ForgotPasswordDto,
   ResetPasswordDto,
   RequestReactivationDto,
-  ReactivateAccountDto
+  ReactivateAccountDto,
 } from './dto';
 import { ChangePasswordDto } from '../users/dto/change-password.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
@@ -39,6 +40,7 @@ import type { UserDocument } from '../users/schemas/user.schema';
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
   @Post('register')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Register a new user and dispatch OTP' })
@@ -46,6 +48,7 @@ export class AuthController {
     return this.authService.register(dto);
   }
 
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
   @Post('verify-otp')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Verify OTP and issue cookies' })
@@ -60,6 +63,7 @@ export class AuthController {
     return { message: result.message, user: result.user };
   }
 
+  @Throttle({ default: { limit: 10, ttl: 300_000 } })
   @Post('login')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Login user and set HttpOnly cookies' })
@@ -153,6 +157,7 @@ export class AuthController {
     return { message: 'Logged out from all devices successfully' };
   }
 
+  @Throttle({ default: { limit: 3, ttl: 600_000 } })
   @Post('resend-otp')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Resend OTP' })
@@ -160,6 +165,7 @@ export class AuthController {
     return this.authService.resendOtp(dto);
   }
 
+  @Throttle({ default: { limit: 3, ttl: 600_000 } })
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Request password reset token via email' })
@@ -167,6 +173,7 @@ export class AuthController {
     return this.authService.forgotPassword(dto);
   }
 
+  @Throttle({ default: { limit: 5, ttl: 600_000 } })
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Reset password using token' })

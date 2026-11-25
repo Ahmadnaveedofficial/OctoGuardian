@@ -604,7 +604,7 @@ export class GitHubService {
     };
   }
 
-  // --- ENTERPRISE OPERATIONS ADDED ---
+
   async listCommits(owner: string, repo: string, branch = 'main', installationId?: number) {
     const octokit = this.getOctokit(installationId);
     const { data } = await octokit.rest.repos.listCommits({ owner, repo, sha: branch, per_page: 20 });

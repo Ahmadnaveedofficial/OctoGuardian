@@ -9,11 +9,11 @@ import {
 export class ResetPasswordDto {
   @IsNotEmpty()
   @IsEmail()
-  email: string;
+  email!: string;
 
   @IsNotEmpty()
   @IsString()
-  token: string;
+  token!: string;
 
   @IsNotEmpty()
   @IsString()
@@ -27,5 +27,5 @@ export class ResetPasswordDto {
   @Matches(/(?=.*\d)/, {
     message: 'Password must contain at least one number',
   })
-  newPassword: string;
+  newPassword!: string;
 }

@@ -86,7 +86,7 @@ export class AuthService {
       user.email,
     );
 
-    // Save Multi-Device Session
+    // Save Multi Device Session
     const hash = await this.passwordService.hash(tokens.refreshToken);
     const sessionExpiry = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
     await this.sessionModel.create({
@@ -173,7 +173,7 @@ export class AuthService {
       }
     }
 
-    // Reuse Detection: Token is valid JWT but does not exist in active sessions
+    // Reuse Detection Token is valid JWT but does not exist in active sessions
     if (!matchedSession) {
       // Invalidate ALL sessions of this user (Potential Compromise)
       await this.sessionModel.deleteMany({
@@ -206,7 +206,7 @@ export class AuthService {
     rawRefreshToken: string | undefined,
     accessPayload: (JwtPayload & { jti?: string; exp?: number }) | undefined,
   ): Promise<void> {
-    // 1. Delete this device session from MongoDB
+    // Delete this device session from MongoDB
     if (rawRefreshToken) {
       const sessions = await this.sessionModel.find({
         userId: new Types.ObjectId(userId),
@@ -223,7 +223,7 @@ export class AuthService {
       }
     }
 
-    // 2. Blacklist current Access Token till its TTL
+    // 2 Blacklist current Access Token till its TTL
     if (accessPayload?.jti && accessPayload?.exp) {
       await this.blacklistModel.create({
         tokenId: accessPayload.jti,

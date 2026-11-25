@@ -17,7 +17,7 @@ export class Session {
   @Prop({ required: true })
   ipAddress!: string;
 
-  @Prop({ required: true, type: Date, expires: 0 }) // TTL Index: Expire hote hi Mongo auto-delete kar dega
+  @Prop({ required: true, type: Date, expires: 0 }) // TTL Index Expire hote hi Mongo auto-delete kar dega
   expiresAt!: Date;
 }
 
